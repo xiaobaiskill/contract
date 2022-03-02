@@ -2,7 +2,9 @@
 pragma solidity ^0.8.0;
 
 
-interface ERC721 /* is ERC165 */ {
+import "@openzeppelin/contracts/utils/Strings.sol";
+
+interface IERC721 /* is ERC165 */ {
     /// @dev This emits when ownership of any NFT changes by any mechanism.
     ///  This event emits when NFTs are created (`from` == 0) and destroyed
     ///  (`to` == 0). Exception: during contract creation, any number of NFTs
@@ -97,7 +99,7 @@ interface ERC721 /* is ERC165 */ {
     function isApprovedForAll(address _owner, address _operator) external view returns (bool);
 }
 
-interface ERC165 {
+interface IERC165 {
     /// @notice Query if a contract implements an interface
     /// @param interfaceID The interface identifier, as specified in ERC-165
     /// @dev Interface identification is specified in ERC-165. This function
@@ -107,7 +109,7 @@ interface ERC165 {
     function supportsInterface(bytes4 interfaceID) external view returns (bool);
 }
 
-interface ERC721TokenReceiver {
+interface IERC721TokenReceiver {
     /// @notice Handle the receipt of an NFT
     /// @dev The ERC721 smart contract calls this function on the recipient
     ///  after a `transfer`. This function MAY throw to revert and reject the
@@ -123,7 +125,7 @@ interface ERC721TokenReceiver {
     function onERC721Received(address _operator, address _from, uint256 _tokenId, bytes _data) external returns(bytes4);
 }
 
-interface ERC721Metadata /* is ERC721 */ {
+interface IERC721Metadata /* is ERC721 */ {
     /// @notice A descriptive name for a collection of NFTs in this contract
     function name() external view returns (string memory);
 
@@ -137,7 +139,7 @@ interface ERC721Metadata /* is ERC721 */ {
     function tokenURI(uint256 _tokenId) external view returns (string memory);
 }
 
-interface ERC721Enumerable /* is ERC721 */ {
+interface IERC721Enumerable /* is ERC721 */ {
     /// @notice Count NFTs tracked by this contract
     /// @return A count of valid NFTs tracked by this contract, where each one of
     ///  them has an assigned and queryable owner not equal to the zero address
@@ -160,6 +162,175 @@ interface ERC721Enumerable /* is ERC721 */ {
     function tokenOfOwnerByIndex(address _owner, uint256 _index) external view returns (uint256);
 }
 
-contract JMZ is ERC721,ERC165,ERC721TokenReceiver,ERC721Metadata,ERC721Enumerable{
+contract JMZ is IERC721,IERC165,IERC721Metadata{
+    use Strings for uint256;
+
+    string private _name;
+    string private _symbol;
+    uint256 private _total;
+
+    address private _owner;
+    bool public _isSaleActive = false;
+    bool public _revealed = false;
+
+    string private _baseURI;
+    string private _notRevealedUri;
+    string public _baseExtension = ".json"
+
+    mapping(address => uint256) private _handlers;
+    mapping(uint256 => address) private _tokenIds;
+    mapping(uint256 => address) private _tokenApprovals;
+    mapping(address => mapping (address=>bool) ) private _operatorApprovals;
+
+    modifier onlyOwner(){
+        require(_owner == _msgSender,"Ownable: caller is not the owner");
+        _;
+    }
+
+    function _msgSender() internal virtual returns(address){
+        return msg.sender;
+    }
+
+    constructor (string memory name_, string memory symbol_, uint256 total_, string memory initBaseURI_, string memory initNotRevealedUri_){
+        _name= name_
+        _symbol = symbol_;
+        _total = total_;
+        setBaseURI(initBaseURI_);
+        setNotRevealedURI(notRevealedUri);
+        _owner = _msgSender()
+    }
+
+    function name() public view virtual override returns (string memory) {
+        return _name;
+    }
+    function symbol() public view virtual override returns (string memory){
+        return _symbol;
+    }
+    function tokenURI(uint256 _tokenId) public view virtual override returns (string){
+        require(_tokenId<=_total, "ERC721Metadata: URI query for nonexistent token");
+        
+        if (!_revealed) {
+            return _notRevealedUri;
+        }
+        return string(abi.encodePacked(_baseURI, tokenId.toString(), baseExtension));
+    }
+
+    function balanceOf(address _owner) public view virtual override returns (uint256){
+        require(_owner != address(0), "ERC721: balance query for the zero address");
+        
+        return condition[address];
+    }
+
+    function ownerOf(uint256 _tokenId) public view virtual override returns (address){
+        require(_revealed, "ERC721: The blind box has not been opened");
+        address owner = _owners[tokenId];
+        require(owner != address(0),"ERC721: owner query for nonexistent token");
+        return owner;
+    }
+
+    function safeTransferFrom(address _from, address _to, uint256 _tokenId, bytes data) external payable{
+        require(_isSaleActive,"ERC721: No sales opened");
+        require(_revealed, "ERC721: The blind box has not been opened");
+
+        require(_isApprovedOrOwner(_msgSender(), _tokenId),"ERC721: transfer caller is not owner nor approved");
+
+    }
+
+    function safeTransferFrom(address _from, address _to, uint256 _tokenId) external payable{
+        safeTransferFrom(_from, _to, _tokenId);
+    }
+
+    function transferFrom(address _from, address _to, uint256 _tokenId) external payable{
+        require(_isSaleActive,"ERC721: No sales opened");
+        require(_revealed, "ERC721: The blind box has not been opened");
+
+        require(_isApprovedOrOwner(_msgSender(), _tokenId),"ERC721: transfer caller is not owner nor approved")
+        _transfer(_from,_to,_tokenId)
+    }
+
+    function _transfer(address _from, address _to, uint256 _tokenId, bytes data) internal virtual {
+        _transfer(_from, _to, _tokenId);
+        _;
+    }
+
+    function approve(address _approved, uint256 _tokenId) external payable{
+        require(_isSaleActive,"ERC721: No sales opened");
+        require(_revealed, "ERC721: The blind box has not been opened");
+
+        address owner = ownerOf(_tokenId)
+        require(owner == _msgSender() || isApprovedForAll(owner, _msgSender()), "ERC721: approve caller is not owner nor approved for all");
+        _approve(_approved, _tokenId)
+    }
+
+
+    function setApprovalForAll(address _operator, bool _approved) external{
+        require(_isSaleActive,"ERC721: No sales opened");
+        require(_revealed, "ERC721: The blind box has not been opened");
+
+        _setApprovalForAll(__msgSender(), _operator,_approved)
+    }
+
+    function _setApprovalForAll(address _owner, address _operator, bool _approved) {
+        require(_owner != _operator,"ERC721: approve to caller");
+        _operatorApprovals[owner][operator] = _approved;
+        emit ApprovalForAll(owner, operator, approved);
+    }
+
+    function _isApprovedOrOwner(address _owner, uint256 _tokenId) internal virtual returns(bool){
+        address owner = ownerOf(_tokenId)
+        return owner == _owner|| _operatorApprovals[owner][_owner]
+    }
+
+    function _transfer(address _from, address _to, uint256 _tokenId) internal virtual {
+        require(ownerOf(tokenId) == from, "ERC721: transfer from incorrect owner");
+        require(to != address(0), "ERC721: transfer to the zero address");
+
+        _approve(address(0), _tokenId);
+        _handlers[_from] -= 1;
+        _handlers[_to] += 1;
+        _tokenIds[_tokenId] = to;
+        emit Transfer(_from, _to, _tokenId);
+    }
+
+    function _approve(address _approved, uint256 _tokenId) internal virtual {
+         _tokenApprovals[_tokenId] = _approved;
+    }
+
+
+    function getApproved(uint256 _tokenId) external view returns (address){
+        require(_isSaleActive,"ERC721: No sales opened");
+        require(_revealed, "ERC721: The blind box has not been opened");
+
+        return _tokenApprovals[_tokenId]
+    }
+
+    function isApprovedForAll(address _owner, address _operator) internal view returns (bool){
+        require(_isSaleActive,"ERC721: No sales opened");
+        require(_revealed, "ERC721: The blind box has not been opened");
+
+        return _operatorApprovals[_owner][_operator]
+    }
     
+    
+    function supportsInterface(bytes4 interfaceID) external view returns (bool){
+        return interfaceID == type(ERC721).interfaceId || interfaceID == type(ERC721Metadata).interfaceId || interfaceId == type(ERC165).interfaceId;
+    }
+
+    // function onERC721Received(address _operator, address _from, uint256 _tokenId, bytes _data) external returns(bytes4){
+
+    // }
+
+    function flipSaleActive() public onlyOwner{
+        _isSaleActive = !_isSaleActive;
+    }
+
+    function flipReveal() public onlyOwner {
+        _revealed = !_revealed;
+    }
+    function setBaseURI(string baseuri_){
+        _baseURI = baseuri_;
+    }
+    function setNotRevealedURI(string notRevealedUri_) {
+        _notRevealedUri = notRevealedUri_;
+    }
 }
