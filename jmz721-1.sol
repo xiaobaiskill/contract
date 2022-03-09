@@ -731,13 +731,6 @@ contract MyNft is ERC721Upgradeable, OwnableUpgradeable {
         setBaseURI(_initBaseURI);
     }
 
-    // invalid func(testing)
-    function initialize() public initializer {
-        maxSupply = 1000;
-        maxMintAmount = 10;
-        cost = 0.1 ether;
-    }
-
     function setBaseURI(string memory _baseURI) public onlyOwner {
         baseURI = _baseURI;
     }
@@ -774,11 +767,38 @@ contract MyNft is ERC721Upgradeable, OwnableUpgradeable {
             _mintAmount <= maxMintAmount,
             "the number of mint token has been exceeded"
         );
-        require(_mintAmount * cost >= msg.value);
+        require(_mintAmount * cost <= msg.value, "not enough ether sent");
 
-        require(totalSupply + _mintAmount <= maxSupply);
+        require(
+            totalSupply + _mintAmount <= maxSupply,
+            "the maximum number of supports has been exceeded"
+        );
         for (uint256 i = 1; i <= _mintAmount; i++) {
             _safeMint(_to, totalSupply + 1);
         }
+    }
+
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        virtual
+        override
+        returns (string memory)
+    {
+        require(
+            _exists(tokenId),
+            "ERC721Metadata: URI query for nonexistent token"
+        );
+        return
+            bytes(baseURI).length > 0
+                ? string(
+                    abi.encodePacked(baseURI, tokenId.toString(), baseExtension)
+                )
+                : "";
+    }
+
+    function withdraw(address _to) public onlyOwner {
+        uint256 balance = address(this).balance;
+        payable(_to).transfer(balance);
     }
 }
