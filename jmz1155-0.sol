@@ -862,7 +862,10 @@ contract MyToken is
     mapping(address => bool) public minters;
 
     modifier onlyMinter() {
-        require(minters[_msgSender()], "Mint: caller is not the minter");
+        require(
+            minters[_msgSender()] || owner() == _msgSender(),
+            "Mint: caller is not the minter"
+        );
         _;
     }
 
@@ -882,7 +885,6 @@ contract MyToken is
         __ERC1155_init(url_);
         __Ownable_init();
         baseURL = url_;
-        setMinter(_msgSender(), true);
     }
 
     function newBox(
