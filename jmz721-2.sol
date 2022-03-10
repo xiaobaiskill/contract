@@ -18,7 +18,7 @@ contract MyNft is
 
     bool public isSaleActive = false;
     bool public revealed = false;
-    string public revealedURI;
+    string public blindBoxURI;
 
     string public baseURI;
     string public baseExtension = ".json";
@@ -28,12 +28,12 @@ contract MyNft is
     uint256 public cost = 0.01 ether;
     bool public paused = false;
 
-    constructor(string memory _initRevealedURI, string memory _initBaseURI)
+    constructor(string memory _blindBoxURI, string memory _initBaseURI)
         initializer
     {
         __ERC721_init("MyNFT", "MN");
         __Ownable_init();
-        setRevealedURI(_initRevealedURI);
+        setBlindBoxURI(_blindBoxURI);
         setBaseURI(_initBaseURI);
     }
 
@@ -41,8 +41,8 @@ contract MyNft is
         baseURI = _baseURI;
     }
 
-    function setRevealedURI(string memory _revealedURI) public onlyOwner {
-        revealedURI = _revealedURI;
+    function setBlindBoxURI(string memory _blindBoxURI) public onlyOwner {
+        blindBoxURI = _blindBoxURI;
     }
 
     function setBaseExtension(string memory _newBaseExtension)
@@ -94,7 +94,7 @@ contract MyNft is
         returns (string memory)
     {
         if (!revealed) {
-            return revealedURI;
+            return blindBoxURI;
         }
 
         require(
