@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC1155/IERC1155Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC1155/IERC1155ReceiverUpgradeable.sol";
@@ -8,7 +9,6 @@ import "@openzeppelin/contracts-upgradeable/token/ERC1155/extensions/IERC1155Met
 import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
@@ -23,8 +23,6 @@ contract MyToken is
 
     string public name = "My Token";
     string public symbol = "MT";
-    string public baseURL;
-    string public baseExtension = ".json";
 
     mapping(address => bool) public minters;
 
@@ -40,14 +38,13 @@ contract MyToken is
         uint256 id;
         string name;
         uint256 mintNum;
-        uint256 openNum;
         uint256 totalSupply;
         uint256 price;
         bool isBlindBox;
         bool isActive;
     }
     mapping(uint256 => box) public boxMap;
-
+    mapping(uint256 => uint256[]) public gifts;
     modifier existsBox(uint256 boxID_) {
         require(boxID_ > 0, "invalid box");
         require(boxMap[boxID_].id > 0, "box does not exist");
@@ -57,7 +54,6 @@ contract MyToken is
     constructor(string memory url_) initializer {
         __ERC1155_init(url_);
         __Ownable_init();
-        baseURL = url_;
     }
 
     function newBox(
@@ -73,7 +69,6 @@ contract MyToken is
             id: boxID_,
             name: name_,
             mintNum: 0,
-            openNum: 0,
             totalSupply: totalSupply_,
             price: price_,
             isBlindBox: isBlindBox_,
@@ -100,7 +95,6 @@ contract MyToken is
             id: boxID_,
             name: name_,
             mintNum: boxMap[boxID_].mintNum,
-            openNum: boxMap[boxID_].openNum,
             totalSupply: totalSupply_,
             price: price_,
             isBlindBox: boxMap[boxID_].isBlindBox,
@@ -118,6 +112,48 @@ contract MyToken is
             require(boxMap[boxID_].id > 0, "box does not exist");
             boxMap[boxID_].isActive = isActive_;
         }
+    }
+
+    uint256[] arr;
+
+    function setBlindBoxGift(
+        uint256 boxID_,
+        uint256[] memory gifts_,
+        uint256[] memory giftNums_
+    ) public onlyOwner whenNotPaused existsBox(boxID_) {
+        if (gifts[boxID_].length > 0) {
+            // relieve blind box
+            for (uint256 i = 0; i < gifts[boxID_].length; i++) {
+                boxMap[gifts[boxID_][i]].mintNum -= 1;
+            }
+        }
+
+        require(boxMap[boxID_].isBlindBox, "must be a blind box");
+        require(!boxMap[boxID_].isActive, "box active is beginning");
+        require(
+            gifts_.length == giftNums_.length,
+            "gift is different with giftNums"
+        );
+
+        arr = new uint256[](0);
+        for (uint256 i = 0; i < gifts_.length; i++) {
+            require(gifts_[i] > 0, "invalid box");
+            require(boxMap[gifts_[i]].id > 0, "box does not exist");
+            require(
+                !boxMap[gifts_[i]].isBlindBox,
+                "gift cannot be blind boxes"
+            );
+            require(
+                boxMap[gifts_[i]].mintNum + giftNums_[i] <=
+                    boxMap[gifts_[i]].totalSupply,
+                "insufficient totalsupply"
+            );
+            boxMap[gifts_[i]].mintNum += giftNums_[i];
+            for (uint256 j = 0; j < giftNums_[i]; j++) {
+                arr.push(gifts_[i]);
+            }
+        }
+        gifts[boxID_] = arr;
     }
 
     function mint(
@@ -200,33 +236,28 @@ contract MyToken is
     ) internal existsBox(boxID_) {
         require(boxMap[boxID_].isActive, "box active is not beginning");
         if (boxMap[boxID_].isBlindBox) {
-            // 如果是盲盒应该发放盲盒内的商品
+            require(
+                !address(_msgSender()).isContract(),
+                "only external accounts can burn blind box"
+            );
+            require(gifts[boxID_].length > 0, "not found gift");
+            uint256 index = uint256(
+                keccak256(abi.encodePacked(block.timestamp, msg.sender, from_))
+            ) % gifts[boxID_].length;
+            _mint(from_, boxID_, gifts[boxID_][index], "");
+
+            uint256 len = gifts[boxID_].length;
+            for (uint256 i = index; i < len - 1; i++) {
+                gifts[boxID_][i] = gifts[boxID_][i + 1];
+            }
+
+            gifts[boxID_].pop();
         }
         _burn(from_, boxID_, num_);
     }
 
     function setMinter(address minter, bool power) public onlyOwner {
         minters[minter] = power;
-    }
-
-    function uri(uint256 boxID)
-        public
-        view
-        virtual
-        override
-        returns (string memory)
-    {
-        // require
-        return
-            bytes(baseURL).length > 0
-                ? string(
-                    abi.encodePacked(baseURL, boxID.toString(), baseExtension)
-                )
-                : "";
-    }
-
-    function setURL(string memory newURL_) public onlyOwner {
-        baseURL = newURL_;
     }
 
     function setPause(bool isPause) public onlyOwner {
