@@ -274,6 +274,7 @@ contract MyToken is
 
     function setUri(string memory uri_) public onlyOwner {
         _setURI(uri_);
+        emit URI(uri_, 0);
     }
 
     function setMinter(address minter, bool power) public onlyOwner {
