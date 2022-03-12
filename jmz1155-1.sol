@@ -13,10 +13,12 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 
+// https://api.frank.hk/api/nft/demo/1155/marvel/{id}.json
+
 contract MyToken is
     OwnableUpgradeable,
-    ERC1155Upgradeable,
-    PausableUpgradeable
+    PausableUpgradeable,
+    ERC1155Upgradeable
 {
     using AddressUpgradeable for address;
     using StringsUpgradeable for uint256;
@@ -45,6 +47,7 @@ contract MyToken is
     }
     mapping(uint256 => box) public boxMap;
     mapping(uint256 => uint256[]) public gifts;
+
     modifier existsBox(uint256 boxID_) {
         require(boxID_ > 0, "invalid box");
         require(boxMap[boxID_].id > 0, "box does not exist");
@@ -236,14 +239,30 @@ contract MyToken is
     ) internal existsBox(boxID_) {
         require(boxMap[boxID_].isActive, "box active is not beginning");
         if (boxMap[boxID_].isBlindBox) {
-            require(
-                !address(_msgSender()).isContract(),
-                "only external accounts can burn blind box"
-            );
-            require(gifts[boxID_].length > 0, "not found gift");
-            uint256 index = uint256(
-                keccak256(abi.encodePacked(block.timestamp, msg.sender, from_))
-            ) % gifts[boxID_].length;
+            _burnBlindBox(from_, boxID_, num_);
+        }
+        _burn(from_, boxID_, num_);
+    }
+
+    function _burnBlindBox(
+        address from_,
+        uint256 boxID_,
+        uint256 num_
+    ) internal {
+        require(
+            !address(_msgSender()).isContract(),
+            "only external accounts can burn blind box"
+        );
+        require(gifts[boxID_].length > 0, "not found gift");
+        uint256 index = 0;
+        for (uint256 j = 0; j < num_; j++) {
+            index =
+                uint256(
+                    keccak256(
+                        abi.encodePacked(block.timestamp, msg.sender, from_)
+                    )
+                ) %
+                gifts[boxID_].length;
             _mint(from_, boxID_, gifts[boxID_][index], "");
 
             uint256 len = gifts[boxID_].length;
@@ -253,7 +272,6 @@ contract MyToken is
 
             gifts[boxID_].pop();
         }
-        _burn(from_, boxID_, num_);
     }
 
     function setMinter(address minter, bool power) public onlyOwner {
