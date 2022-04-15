@@ -8,6 +8,8 @@ import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
+// blindbox: ipfs://QmPkqwiEGnMd7pVXWKf1ZnZgAp6PRpctqpAodsvbAbXbxM
+// baseuri: ipfs://Qmck3pTA8PQMpPgWrWXDwoBhr9E3AmBR1X5Mkd2WaMM3Rb/
 contract MyNft is
     Initializable,
     ERC721EnumerableUpgradeable,
